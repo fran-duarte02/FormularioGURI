@@ -1,12 +1,12 @@
-# app.R (mismo comportamiento, ahora con tema violeta tipo PISA)
+
 library(shiny)
 library(DBI)
 library(RSQLite)
 library(dplyr)
-library(bslib)   # <-- tema
+library(bslib)
 
 db_path <- "Z:/z_PISA-Uruguay/z_IT/FormGURI/data/encuesta.sqlite"
-uploads_dir <- dirname(db_path)  # guardar archivos en una carpeta aparte
+uploads_dir <- dirname(db_path)
 dir.create(uploads_dir, showWarnings = FALSE, recursive = TRUE)
 
 # ---- Crear DB si no existe ----
@@ -35,150 +35,135 @@ if (!file.exists(db_path)) {
   ")
   dbDisconnect(con0)
 } else {
-  # si existe la DB, verificamos columnas y agregamos las que falten
   con0 <- dbConnect(SQLite(), db_path)
   info <- dbGetQuery(con0, "PRAGMA table_info(respuestas);")
   cols <- info$name
-  if (!"detalle_alta" %in% cols) {
-    dbExecute(con0, "ALTER TABLE respuestas ADD COLUMN detalle_alta TEXT;")
-  }
-  if (!"draft" %in% cols) {
-    dbExecute(con0, "ALTER TABLE respuestas ADD COLUMN draft INTEGER DEFAULT 0;")
-  }
-  if (!"filename" %in% cols) {
-    dbExecute(con0, "ALTER TABLE respuestas ADD COLUMN filename TEXT;")
-  }
+  if (!"detalle_alta" %in% cols) dbExecute(con0, "ALTER TABLE respuestas ADD COLUMN detalle_alta TEXT;")
+  if (!"draft" %in% cols) dbExecute(con0, "ALTER TABLE respuestas ADD COLUMN draft INTEGER DEFAULT 0;")
+  if (!"filename" %in% cols) dbExecute(con0, "ALTER TABLE respuestas ADD COLUMN filename TEXT;")
   dbDisconnect(con0)
 }
 
-# ---- Tema violeta (estético) ----
-# Paleta violeta inspirada en PISA-ish: primary violeta oscuro, secondary violeta claro, fondo muy suave
+# ---- Tema violeta ----
 tema_violeta <- bs_theme(
   version = 4,
-  bootswatch = NULL,
-  bg = "#F7F3FA",
-  fg = "#2B2B2B",
-  primary = "#9B59B6",    # violeta principal
-  secondary = "#90729F",  # violeta claro
+  bg = "#FFFF",
+  fg = "#331d3d",
+  primary = "#9B59B6",
+  secondary = "#331d3d",
   success = "#6CC4A6",
   base_font = font_google("Inter")
 )
 
-# CSS adicional para pulir colores
 css_violeta <- "
-/* General */
-body { background-color: #F7F3FA; }
-/* Títulos */
-h3, h2, .title { color: #4A2170; }
+                body { background-color: #F7F3FA; }
+                h3, h2, .title { color: #4A2170; }
+                .btn-primary { background-image: linear-gradient(90deg,#6a2f9b,#9B59B6); border-color: #4a1f66; box-shadow: none; }
+                .progress { background-color: #efe9f7; }
+                .progress-bar { background-image: linear-gradient(90deg,#9B59B6,#9B59B6); }
+                .table-striped > tbody > tr:nth-of-type(odd) { background-color: #faf6fc; }
+                .table-hover tbody tr:hover { background-color: #f0e9f8; }
+                .form-control:focus { border-color: #8f5fb7; box-shadow: 0 0 0 0.2rem rgba(91,44,130,0.15); }
+                .small-note { color: #6f4b84; font-size: 12px; }
+              "
 
-/* Botones primarios */
-.btn-primary {
-  background-image: linear-gradient(90deg,#6a2f9b,#9B59B6);
-  border-color: #4a1f66;
-  box-shadow: none;
-}
-
-/* Progress bar violeta */
-.progress { background-color: #efe9f7; }
-.progress-bar { background-image: linear-gradient(90deg,#9B59B6,#9B59B6); }
-
-/* Table striped hover */
-.table-striped > tbody > tr:nth-of-type(odd) { background-color: #faf6fc; }
-.table-hover tbody tr:hover { background-color: #f0e9f8; }
-
-/* Inputs focus */
-.form-control:focus { border-color: #8f5fb7; box-shadow: 0 0 0 0.2rem rgba(91,44,130,0.15); }
-
-/* Small helper text */
-.small-note { color: #6f4b84; font-size: 12px; }
-"
+# ---- ADMIN PASSWORD -----------
+ADMIN_PASS <- "PISAURUGUAY2025"  # CAMBIAR antes de producción
 
 # ---- UI ----
 ui <- fluidPage(
   theme = tema_violeta,
   tags$head(tags$style(HTML(css_violeta))),
-  titlePanel(tags$span(style="color:#4A2170;", "Encuesta GURI")),
-  tags$div(style="font-size:12px;color:#6f4b84;",
-           "Nota: pasar ?user_id=XXX para responder, ?admin=1 para admin."),
+  titlePanel(tags$span(style = "color:#4A2170;", "Encuesta GURI")),
   tags$hr(),
   uiOutput("main_ui"),
   tags$hr(),
-  tags$div(style="font-size:11px;color:#999;", "App desarrollada — chiches activos.")
 )
 
-# ---- Server ----
+# ---- SERVER ----
 server <- function(input, output, session) {
-  
-  # parse query params
   params <- reactive(parseQueryString(session$clientData$url_search))
   
-  # user_id obligatorio (salvo admin)
-  user_id <- reactive({
-    if (!is.null(params()$admin)) return("admin")
-    if (is.null(params()$user_id) || params()$user_id == "") {
-      showModal(modalDialog(
-        title = "Error",
-        "No se proporcionó un user_id. No se puede continuar.",
-        easyClose = FALSE,
-        footer = NULL
-      ))
-      stop("user_id obligatorio")
-    }
-    params()$user_id
-  })
-  
-  is_admin <- reactive({
-    !is.null(params()$admin) && params()$admin == "1"
-  })
-  
-  # logging helper
+  # logging
   log_action <- function(uid, msg) {
     con <- dbConnect(SQLite(), db_path)
-    dbExecute(con,
-              "INSERT INTO logs (user_id, accion) VALUES (?, ?)",
-              params = list(uid, msg))
+    dbExecute(con, "INSERT INTO logs (user_id, accion) VALUES (?, ?)", params = list(uid, msg))
     dbDisconnect(con)
   }
   
-  # load existing responses (single row) for this user
+  # ADMIN login
+  admin_mode_requested <- reactive({ !is.null(params()$admin) && params()$admin == "1" })
+  admin_ok <- reactiveVal(FALSE)
+  
+  observeEvent(admin_mode_requested(), {
+    if (admin_mode_requested()) {
+      showModal(modalDialog(
+        title = "Acceso administrador",
+        passwordInput("admin_pass_modal", "Contraseña:", placeholder = "Ingresá la contraseña de admin"),
+        footer = tagList(
+          modalButton("Cancelar"),
+          actionButton("admin_login_btn_modal", "Acceder", class = "btn-primary")
+        ),
+        easyClose = FALSE
+      ))
+    }
+  }, ignoreNULL = TRUE)
+  
+  observeEvent(input$admin_login_btn_modal, {
+    req(input$admin_pass_modal)
+    if (input$admin_pass_modal == ADMIN_PASS) {
+      admin_ok(TRUE)
+      removeModal()
+      log_action("admin", paste0("Login admin exitoso - ", Sys.time()))
+      step("admin")
+      showNotification("Acceso correcto — bienvenido admin.", type = "message")
+    } else {
+      log_action("admin", paste0("Intento fallido: ", Sys.time()))
+      showNotification("Contraseña incorrecta.", type = "error")
+    }
+  })
+  
+  is_admin_auth <- reactive({ isTRUE(admin_ok()) })
+  
+  # user_id
+  user_id <- reactive({
+    if (is_admin_auth()) return("admin")
+    uid <- params()$user_id
+    if (is.null(uid) || uid == "") {
+      showModal(modalDialog(title = "Error", "No se proporcionó un user_id. No se puede continuar.", easyClose = FALSE, footer = NULL))
+      stop("user_id obligatorio")
+    }
+    uid
+  })
+  
+  # cargar respuestas existentes para ese usuario
   existing <- reactive({
-    if (is_admin()) return(NULL)
+    if (is_admin_auth()) return(NULL)
     con <- dbConnect(SQLite(), db_path)
-    row <- dbGetQuery(con, "SELECT * FROM respuestas WHERE user_id = ?", params = list(user_id()))
+    row <- dbGetQuery(con, "SELECT * FROM respuestas WHERE user_id = ?", params = list(params()$user_id))
     dbDisconnect(con)
     if (nrow(row) > 0) return(row[1, ])
     NULL
   })
   
-  # ---- Fix initialization ----
   step <- reactiveVal("start")
   initialized <- reactiveVal(FALSE)
-  
   observeEvent(TRUE, {
     if (initialized()) return()
-    if (is_admin()) {
+    if (admin_mode_requested()) {
       step("admin")
-      log_action("admin", "Entró a admin")
     } else {
       if (!is.null(existing())) {
         step("already")
-        log_action(user_id(), "Se detectó respuesta previa")
+        log_action(params()$user_id, "Se detectó respuesta previa")
       } else {
         step("paso1")
-        log_action(user_id(), "Nuevo inicio de encuestado")
+        log_action(ifelse(is.null(params()$user_id), "anon", params()$user_id), "Nuevo inicio de encuestado")
       }
     }
     initialized(TRUE)
   }, once = TRUE)
-  
-  observeEvent(params()$admin, {
-    if (!is.null(params()$admin) && params()$admin == "1") {
-      step("admin")
-      initialized(TRUE)
-    }
-  })
-  
-  # ---- PASOS UI y helpers ----
+
   progress_bar <- function(pct) {
     tags$div(class = "progress",
              tags$div(class = "progress-bar", role = "progressbar",
@@ -225,7 +210,9 @@ server <- function(input, output, session) {
       progress_bar(100),
       textAreaInput("comentario", "Comentario (máx 500 chars):", value = saved$comentario %||% "", rows = 4),
       tags$div(textOutput("char_count"), class = "small-note"),
-      fileInput("archivo", "Adjuntar archivo (opcional):", accept = c("", "image/*", ".pdf")),
+      fileInput("archivo", "Adjuntar archivo (opcional):", accept = c("image/*", ".pdf")),
+      # preview de la imagen
+      tags$div(style = "margin-top:8px;", imageOutput("archivo_preview", width = "250px")),
       checkboxInput("confirm_read", "Confirmo que la información es veraz", value = FALSE),
       actionButton("prev3", "Atrás"),
       actionButton("preview", "Preview"),
@@ -233,7 +220,6 @@ server <- function(input, output, session) {
     )
   }
   
-  # ---- Validaciones ----
   validate_paso1 <- reactive({
     if (is.null(input$edad) || is.na(input$edad) || input$edad <= 0) return("Edad inválida.")
     if (is.null(input$genero) || input$genero == "") return("Debe elegir un género.")
@@ -253,7 +239,6 @@ server <- function(input, output, session) {
     NULL
   })
   
-  # ---- Autosave (draft) ----
   autosave_vals <- reactive({
     list(
       edad = input$edad,
@@ -266,7 +251,7 @@ server <- function(input, output, session) {
   })
   
   observeEvent(autosave_vals(), {
-    if (is_admin()) return()
+    if (is_admin_auth()) return()
     vals <- autosave_vals()
     if (all(sapply(vals, function(x) is.null(x) || (is.character(x) && x == "") || is.na(x)))) return()
     con <- dbConnect(SQLite(), db_path)
@@ -284,7 +269,7 @@ server <- function(input, output, session) {
         fecha = CURRENT_TIMESTAMP
     ",
               params = list(
-                user_id = user_id(),
+                user_id = params()$user_id,
                 edad = ifelse(is.null(vals$edad), NA, as.integer(vals$edad)),
                 genero = ifelse(is.null(vals$genero), NA, vals$genero),
                 satis = ifelse(is.null(vals$satis), NA, vals$satis),
@@ -293,10 +278,9 @@ server <- function(input, output, session) {
                 filename = ifelse(is.null(vals$filename), NA, vals$filename)
               ))
     dbDisconnect(con)
-    log_action(user_id(), "Autosave (draft)")
+    log_action(params()$user_id, "Autosave (draft)")
   }, ignoreNULL = TRUE, ignoreInit = TRUE)
   
-  # ---- Preview modal ----
   observeEvent(input$preview, {
     preview_list <- list(
       edad = input$edad,
@@ -311,11 +295,9 @@ server <- function(input, output, session) {
     showModal(modalDialog(
       title = "Previsualización",
       renderUI({
-        tagList(
-          lapply(names(preview_list), function(nm) {
-            tags$p(tags$b(nm), ": ", as.character(preview_list[[nm]]))
-          })
-        )
+        tagList(lapply(names(preview_list), function(nm) {
+          tags$p(tags$b(nm), ": ", as.character(preview_list[[nm]]))
+        }))
       }),
       footer = tagList(modalButton("Cerrar"), actionButton("confirm_from_preview", "Confirmar y guardar"))
     ))
@@ -326,24 +308,56 @@ server <- function(input, output, session) {
     isolate({ session$sendInputMessage("submit", list()) })
   })
   
-  # ---- File upload handling ----
+  # ---- preview de imagen ----
+  output$archivo_preview <- renderImage({
+    if (!is.null(input$archivo) && length(input$archivo$datapath) > 0) {
+      src <- input$archivo$datapath
+      fname <- input$archivo$name
+    } else {
+      ex <- existing()
+      src <- NULL; fname <- NULL
+      if (!is.null(ex) && !is.null(ex$filename) && !is.na(ex$filename) && ex$filename != "") {
+        candidate <- file.path(uploads_dir, "uploads", paste0(params()$user_id, "_", ex$filename))
+        if (file.exists(candidate)) {
+          src <- candidate
+          fname <- ex$filename
+        }
+      }
+    }
+    if (is.null(src)) return(NULL)
+    ext <- tolower(tools::file_ext(src))
+    img_exts <- c("png","jpg","jpeg","gif","bmp","webp")
+    if (!(ext %in% img_exts)) {
+      return(NULL)
+    }
+    contentType <- switch(ext,
+                          png = "image/png",
+                          jpg = "image/jpeg",
+                          jpeg = "image/jpeg",
+                          gif = "image/gif",
+                          bmp = "image/bmp",
+                          webp = "image/webp",
+                          "image/*")
+    list(src = src, contentType = contentType, width = 250, alt = fname)
+  }, deleteFile = FALSE)
+  
   observeEvent(input$archivo, {
     f <- input$archivo
     if (is.null(f)) return()
     dest_dir <- file.path(uploads_dir, "uploads")
     dir.create(dest_dir, showWarnings = FALSE)
-    dest <- file.path(dest_dir, paste0(user_id(), "_", f$name))
+    safe_user <- ifelse(is.null(params()$user_id), "unknown", params()$user_id)
+    dest <- file.path(dest_dir, paste0(safe_user, "_", f$name))
     file.copy(from = f$datapath, to = dest, overwrite = TRUE)
     con <- dbConnect(SQLite(), db_path)
     dbExecute(con, "INSERT INTO respuestas (user_id, filename, draft) VALUES (?, ?, 1)
                     ON CONFLICT(user_id) DO UPDATE SET filename = excluded.filename, draft = 1, fecha = CURRENT_TIMESTAMP",
-              params = list(user_id(), f$name))
+              params = list(safe_user, f$name))
     dbDisconnect(con)
-    log_action(user_id(), paste("Adjuntó archivo:", f$name))
+    log_action(safe_user, paste("Adjuntó archivo:", f$name))
     showNotification("Archivo subido correctamente.", type = "message")
   })
   
-  # ---- Save final submit ----
   observeEvent(input$submit, {
     if (!is.null(validate_paso1())) { showNotification(validate_paso1(), type = "error"); step("paso1"); return() }
     if (!is.null(validate_paso2())) { showNotification(validate_paso2(), type = "error"); step("paso2"); return() }
@@ -364,7 +378,7 @@ server <- function(input, output, session) {
         fecha = CURRENT_TIMESTAMP
     ",
               params = list(
-                user_id = user_id(),
+                user_id = params()$user_id,
                 edad = as.integer(input$edad),
                 genero = ifelse(is.null(input$genero), NA, input$genero),
                 satis = ifelse(is.null(input$satis), NA, input$satis),
@@ -374,13 +388,13 @@ server <- function(input, output, session) {
               ))
     dbDisconnect(con)
     
-    log_action(user_id(), "Guardó encuesta (final)")
+    log_action(params()$user_id, "Guardó encuesta (final)")
     showModal(modalDialog("✔ Tus respuestas han sido guardadas (final).", easyClose = TRUE))
     step("final")
   })
   
-  # ---- Admin UI ----
-  admin_ui <- function() {
+  # ---- Admin UI ---
+  admin_ui_core <- function() {
     tagList(
       h2("Panel Admin"),
       fluidRow(
@@ -394,9 +408,6 @@ server <- function(input, output, session) {
                actionButton("clear_all_btn", "Vaciar toda la base (respuestas + logs)", class = "btn-warning")
         ),
         column(6,
-               h3("Logs"),
-               tableOutput("tabla_logs"),
-               br(),
                downloadButton("download_csv", "Exportar respuestas a CSV")
         )
       ),
@@ -412,13 +423,6 @@ server <- function(input, output, session) {
     df
   }, striped = TRUE, hover = TRUE)
   
-  output$tabla_logs <- renderTable({
-    con <- dbConnect(SQLite(), db_path)
-    df <- dbReadTable(con, "logs")
-    dbDisconnect(con)
-    if (nrow(df) == 0) return(NULL)
-    df
-  }, striped = TRUE, hover = TRUE)
   
   output$download_csv <- downloadHandler(
     filename = function() paste0("respuestas_", Sys.Date(), ".csv"),
@@ -430,7 +434,6 @@ server <- function(input, output, session) {
     }
   )
   
-  # Delete single user
   observeEvent(input$del_user_btn, {
     uid <- isolate(input$del_user)
     if (is.null(uid) || uid == "") { showNotification("Ingresá un user_id válido para eliminar.", type = "error"); return() }
@@ -452,7 +455,6 @@ server <- function(input, output, session) {
     showNotification(paste0("Usuario ", uid, " eliminado."), type = "message")
   })
   
-  # Clear whole DB
   observeEvent(input$clear_all_btn, {
     showModal(modalDialog(
       title = "VACIO TOTAL",
@@ -472,12 +474,18 @@ server <- function(input, output, session) {
     step("admin")
   })
   
-  # ---- Main UI rendering ----
+  # ---- Main UI  ----
   output$main_ui <- renderUI({
     st <- step()
     saved <- existing() %||% list()
     switch(st,
-           "admin" = admin_ui(),
+           "admin" = {
+             if (is_admin_auth()) {
+               admin_ui_core()
+             } else {
+               tagList(h3("Acceso administrador — autenticación requerida."))
+             }
+           },
            "already" = tagList(
              h3("Ya completaste esta encuesta."),
              p("¿Querés editar tus respuestas?"),
@@ -491,26 +499,23 @@ server <- function(input, output, session) {
     )
   })
   
-  # ---- Navigation ----
   observeEvent(input$next1, {
     if (!is.null(validate_paso1())) { showNotification(validate_paso1(), type = "error"); return() }
-    log_action(user_id(), "Paso1 -> Paso2")
+    log_action(params()$user_id, "Paso1 -> Paso2")
     step("paso2")
   })
   
-  observeEvent(input$prev2, { log_action(user_id(), "Paso2 -> Paso1"); step("paso1") })
+  observeEvent(input$prev2, { log_action(params()$user_id, "Paso2 -> Paso1"); step("paso1") })
   observeEvent(input$next2, {
     if (!is.null(validate_paso2())) { showNotification(validate_paso2(), type = "error"); return() }
-    log_action(user_id(), "Paso2 -> Paso3")
+    log_action(params()$user_id, "Paso2 -> Paso3")
     step("paso3")
   })
-  observeEvent(input$prev3, { log_action(user_id(), "Paso3 -> Paso2"); step("paso2") })
+  observeEvent(input$prev3, { log_action(params()$user_id, "Paso3 -> Paso2"); step("paso2") })
   
-  # ---- Editar / salir ----
-  observeEvent(input$go_edit, { step("paso1"); log_action(user_id(), "Usuario eligió editar encuesta") })
-  observeEvent(input$go_exit, { step("final"); log_action(user_id(), "Usuario eligió no editar y salir") })
+  observeEvent(input$go_edit, { step("paso1"); log_action(params()$user_id, "Usuario eligió editar encuesta") })
+  observeEvent(input$go_exit, { step("final"); log_action(params()$user_id, "Usuario eligió no editar y salir") })
   
-  # ---- char counter ----
   output$char_count <- renderText({
     n <- if (!is.null(input$comentario)) nchar(input$comentario) else 0
     paste0(n, " / 500 caracteres")
@@ -521,4 +526,4 @@ server <- function(input, output, session) {
 
 shinyApp(ui, server)
 
-
+    
