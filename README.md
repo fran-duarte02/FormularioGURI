@@ -3,12 +3,10 @@
 <p align="left">
   <img src="https://www.r-project.org/logo/Rlogo.png" alt="Logo R" width="40"/>
   <img src="https://shiny.rstudio.com/images/shiny.png" alt="Logo Shiny" width="40"/>
-  <img src="https://img.icons8.com/color/48/000000/warning-shield.png" alt="Estado" width="40"/>
-  <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Plataforma_GURI_logo.png" alt="GURI Uruguay" width="40"/>
-  <img src="https://www.anep.edu.uy/sites/all/themes/anep/logo.png" alt="ANEP" width="40"/>
+  <img src="https://play.google.com/store/apps/details?id=guri.ceip.gurifamiliaapp&hl=es_NI" alt="GURI Uruguay" width="40"/>
+  <img src="https://www.anep.edu.uy/" alt="ANEP" width="40"/>
 </p>
 
-**Estado:** 🟢 Producción
 
 Repositorio con un **prototipo del formulario GURI**. Incluye modo *usuario* y *administrador*, subida de imagenes e identificación de usuarios vía `user_id` en la URL.
 
