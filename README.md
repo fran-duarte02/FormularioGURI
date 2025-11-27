@@ -3,8 +3,6 @@
 <p align="left">
   <img src="https://www.r-project.org/logo/Rlogo.png" alt="Logo R" width="40"/>
   <img src="https://shiny.rstudio.com/images/shiny.png" alt="Logo Shiny" width="40"/>
-  <img src="https://www.dgeip.edu.uy//documentos/galerias/prensa/1360/portada-noticia-guri-new-logo.jpg" alt="GURI Uruguay" width="40"/>
-  <img src="https://www.anep.edu.uy/themes/custom/anep/logo.svg"/>
 </p>
 
 
