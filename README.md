@@ -1,7 +1,4 @@
-# 📝 Formulario GURI <p align="left">
-  <img src="https://www.r-project.org/logo/Rlogo.png" alt="Logo R" width="40"/>
-  <img src="https://shiny.rstudio.com/images/shiny.png" alt="Logo Shiny" width="40"/>
-</p>
+# 📝 Formulario GURI <p align="left"><img src="https://www.r-project.org/logo/Rlogo.png" alt="Logo R" width="40"/><img src="https://shiny.rstudio.com/images/shiny.png" alt="Logo Shiny" width="40"/></p>
 
 Repositorio con un **prototipo del formulario GURI**. Incluye modo *usuario* y *administrador*, subida de imagenes e identificación de usuarios vía `user_id` en la URL.
 
